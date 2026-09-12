@@ -5,6 +5,8 @@
 
 纯前端实现，零依赖，双击 `index.html` 即可运行。
 
+**在线体验：https://chinadongnet.github.io/cpu-eye/**
+
 ## 目录结构
 
 ```
