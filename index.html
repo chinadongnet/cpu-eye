@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CPU-EYE 处理器模拟器</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+
+  <header id="topbar">
+    <div class="brand"><span class="logo">◉</span><b>CPU-EYE</b><span class="sub">C++ → 汇编 → CPU 动态模拟</span></div>
+    <div class="arch-tabs" id="archTabs"></div>
+    <select id="progSel" title="选择示例程序"></select>
+    <div class="toolbar">
+      <button id="btnBuild" class="primary" title="Ctrl+Enter">编译装载</button>
+      <button id="btnStep" title="F10">单步</button>
+      <button id="btnRun" title="F5">▶ 运行</button>
+      <button id="btnReset">重置</button>
+      <label class="speed">速度
+        <input type="range" id="speed" min="0" max="4" step="1" value="2">
+        <span id="speedLabel">中速</span>
+      </label>
+    </div>
+  </header>
+
+  <section id="datapath">
+    <div class="dp-head">
+      <span class="dp-label">数据通路</span>
+      <span id="dpInstr" class="dp-instr">—</span>
+      <span id="dpStages" class="dp-stages"></span>
+      <button id="dpToggle" class="mini">收起</button>
+    </div>
+    <svg id="dpSvg" viewBox="0 0 1040 112" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+        </marker>
+      </defs>
+      <g id="dpArrows"></g>
+      <g id="dpBlocks"></g>
+    </svg>
+  </section>
+
+  <main id="cols">
+    <section class="pane" id="paneSrc">
+      <div class="pane-head">
+        <span>C++ 源码</span>
+        <span id="srcInfo" class="muted"></span>
+      </div>
+      <div class="editor">
+        <div class="gutter" id="gutter"></div>
+        <div class="edit-wrap">
+          <div class="hl-layer"><div id="curLineBar" class="cur-line"></div></div>
+          <textarea id="src" spellcheck="false" wrap="off"></textarea>
+        </div>
+      </div>
+      <div id="diag" class="diag"></div>
+    </section>
+
+    <section class="pane" id="paneAsm">
+      <div class="pane-head">
+        <span id="asmTitle">汇编指令</span>
+        <span class="muted">点击行号设置断点</span>
+      </div>
+      <div id="asmList" class="asm-list"></div>
+    </section>
+
+    <section class="pane" id="paneState">
+      <div class="pane-head"><span>寄存器</span><span id="regArch" class="muted"></span></div>
+      <div id="regs" class="regs"></div>
+      <div class="pane-head"><span>标志位</span><span id="flagHint" class="muted"></span></div>
+      <div id="flags" class="flags"></div>
+      <div class="pane-head tabs" id="memTabs">
+        <button class="tab active" data-mem="stack">栈内存</button>
+        <button class="tab" data-mem="data">数据段</button>
+        <button class="tab" data-mem="call">调用栈</button>
+      </div>
+      <div id="memView" class="mem-view"></div>
+    </section>
+  </main>
+
+  <footer id="bottom">
+    <div class="tabs" id="botTabs">
+      <button class="tab active" data-tab="out">程序输出</button>
+      <button class="tab" data-tab="trace">执行轨迹</button>
+      <button class="tab" data-tab="cmp">四架构对比</button>
+      <button class="tab" data-tab="help">使用说明</button>
+      <div class="status" id="status"></div>
+    </div>
+    <div class="tab-body">
+      <div class="tab-pane active" id="tab-out">
+        <pre id="output"></pre>
+        <div id="verdict" class="verdict"></div>
+      </div>
+      <div class="tab-pane" id="tab-trace"><pre id="trace"></pre></div>
+      <div class="tab-pane" id="tab-cmp">
+        <div class="cmp-bar"><button id="btnCmp" class="primary">在四种架构上分别编译并运行</button>
+          <span class="muted">对同一段 C++ 代码，比较指令数量、调用约定与生成代码</span></div>
+        <div id="cmpResult"></div>
+      </div>
+      <div class="tab-pane" id="tab-help">
+        <div class="help">
+          <h3>这是什么</h3>
+          <p>一个完整的教学用工具链：内置的 <b>C++ 子集编译器</b> 把源码编译成 <b>x86-32 / x86-64 / ARM32 / ARM64</b> 四种真实指令集的汇编，
+             再由 <b>指令级 CPU 模拟器</b> 逐条执行，实时显示寄存器、标志位、栈内存、数据段以及数据通路各阶段的变化。</p>
+          <h3>操作</h3>
+          <ul>
+            <li><b>编译装载</b>（Ctrl+Enter）：编译当前源码并复位 CPU</li>
+            <li><b>单步</b>（F10）：执行一条机器指令，所有发生变化的寄存器/内存会高亮闪烁</li>
+            <li><b>运行 / 暂停</b>（F5）：按所选速度连续执行；点击汇编行号可设断点</li>
+            <li>顶部切换架构后会<b>自动重新编译</b>，可直接对比同一段 C++ 在不同 ISA 上的实现</li>
+          </ul>
+          <h3>支持的 C++ 子集</h3>
+          <ul>
+            <li>类型：<code>int</code>、<code>char</code>、<code>bool</code>、指针 <code>T*</code>、一维数组 <code>T a[N]</code></li>
+            <li>全局变量（可带初始化列表）、局部变量、函数（支持递归）</li>
+            <li>语句：<code>if/else</code>、<code>while</code>、<code>do-while</code>、<code>for</code>、<code>break</code>、<code>continue</code>、<code>return</code></li>
+            <li>运算：<code>+ - * / %</code>、比较、<code>&amp;&amp; || !</code>、位运算 <code>&amp; | ^ ~ &lt;&lt; &gt;&gt;</code>、<code>++ --</code>、复合赋值、取地址与解引用</li>
+            <li>输出：<code>cout &lt;&lt; 表达式 &lt;&lt; endl;</code>（字符串常量、整数），或 <code>print_int()</code> / <code>print_str()</code></li>
+            <li><code>#include</code> 与 <code>using namespace std;</code> 会被忽略，可以照常书写</li>
+          </ul>
+          <h3>模拟范围说明</h3>
+          <p>模拟器在<b>指令语义层</b>工作：忠实执行每条指令对寄存器、内存、标志位的影响，遵循各架构真实的调用约定
+             （System V AMD64、cdecl、AAPCS、AAPCS64）与栈帧布局；但不模拟指令编码字节、缓存、流水线冲突与乱序执行，
+             指令地址按 4 字节等距排列。除法、取模、指针缩放等处的架构差异都是真实的（例如 x86 的 <code>idiv</code> 对应 ARM 的 <code>sdiv</code> + <code>msub/mls</code>）。</p>
+        </div>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<script src="js/frontend.js"></script>
+<script src="js/targets.js"></script>
+<script src="js/codegen.js"></script>
+<script src="js/machine.js"></script>
+<script src="js/programs.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
