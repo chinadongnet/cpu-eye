@@ -8,6 +8,7 @@
   --lh:20px;
 }
 *{box-sizing:border-box}
+[hidden]{display:none !important}
 html,body{height:100%}
 body{
   margin:0;background:var(--bg);color:var(--fg);
@@ -62,6 +63,87 @@ select{font:inherit;background:#1b2434;color:var(--fg);border:1px solid var(--li
 .dp-block.on text.v{fill:var(--amber)}
 .dp-arrow{stroke:#2b3b55;stroke-width:1.4;fill:none;color:#2b3b55}
 .dp-arrow.on{stroke:var(--accent);color:var(--accent)}
+
+/* ---------- 视图切换 ---------- */
+.view-tabs{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.view-tabs button{border:none;border-radius:0;background:#151d2b;font-size:12px;padding:4px 11px;
+  border-right:1px solid var(--line)}
+.view-tabs button:last-child{border-right:none}
+.view-tabs button.on{background:#3b2a5c;color:#e9defd;box-shadow:inset 0 -2px 0 var(--purple)}
+
+/* ---------- CPU 示意图 ---------- */
+#paneSchem{flex:2.2 1 0}
+.schem-wrap{flex:1 1 auto;min-height:0;overflow:auto;padding:6px 8px;background:
+  radial-gradient(circle at 30% 0%,#101a2b 0%,var(--panel2) 70%)}
+/* SVG 自带 1200×620 的宽高比，给定宽度后高度自然得出；放不下时容器滚动 */
+#schemSvg{display:block;width:100%;height:auto;max-height:100%;min-width:820px;margin:auto}
+.schem-legend{flex:0 0 auto;display:flex;gap:16px;flex-wrap:wrap;padding:4px 12px;font-size:11px;
+  color:var(--muted);border-top:1px solid var(--line);background:var(--panel)}
+.schem-legend i.lg{display:inline-block;width:18px;height:8px;border-radius:2px;margin-right:5px;
+  vertical-align:middle;border:1px solid var(--line)}
+.schem-legend i.blk{background:#0e3a4d;border-color:var(--accent)}
+.schem-legend i.bus{background:var(--accent)}
+.schem-legend i.ctrl{background:var(--purple)}
+.schem-legend i.rd{background:#123a2a;border-color:#2e7d5b}
+.schem-legend i.wr{background:#7a5a12;border-color:var(--amber)}
+
+/* 部件 */
+.blk rect,.blk polygon{fill:#151d2b;stroke:#2b3b55;stroke-width:1.2;transition:fill .2s,stroke .2s}
+.blk.on rect,.blk.on polygon{fill:#0e3a4d;stroke:var(--accent);stroke-width:1.8}
+text.blk-t{fill:#9fb0c9;font-size:12.5px;font-family:var(--mono)}
+.blk.on text.blk-t{fill:#dff4ff}
+text.blk-v{fill:#7d8ba3;font-size:11px;font-family:var(--mono)}
+text.blk-v2{fill:#5d6b83;font-size:10.5px;font-family:var(--mono)}
+.blk.on text.blk-v{fill:var(--amber)}
+.blk.on text.blk-v2{fill:#c4ab68}
+
+/* 总线 */
+.bus{stroke:#2b3b55;stroke-width:1.5;fill:none;color:#2b3b55;transition:stroke .15s}
+.bus.ctrl{stroke-dasharray:3 3}
+.bus.on{stroke:var(--accent);color:var(--accent);stroke-width:2.2;stroke-dasharray:7 5;
+  animation:busflow .7s linear infinite}
+.bus.ctrl.on{stroke:var(--purple);color:var(--purple)}
+@keyframes busflow{to{stroke-dashoffset:-24}}
+text.bus-label{fill:#4c5f7c;font-size:10px;font-family:var(--mono)}
+text.bus-label.on{fill:var(--accent2)}
+text.bus-val{fill:var(--amber);font-size:10.5px;font-family:var(--mono)}
+rect.bus-plate{fill:#0b1220;stroke:#233046;stroke-width:.8}
+
+/* 控制信号灯 */
+rect.sig{fill:#131b29;stroke:#2b3b55;stroke-width:1}
+rect.sig.on{fill:#3b2a5c;stroke:var(--purple)}
+text.sig-t{fill:#5d6b83;font-size:10.5px;font-family:var(--mono)}
+text.sig-t.on{fill:#e9defd}
+
+/* 寄存器堆小格 */
+rect.rfc{fill:#101827;stroke:#233046;stroke-width:.8}
+rect.rfc.r{fill:#123a2a;stroke:#2e7d5b}
+rect.rfc.w{fill:#7a5a12;stroke:var(--amber)}
+text.rfc-n{fill:var(--accent);font-size:10px;font-family:var(--mono)}
+text.rfc-v{fill:#b9c8dd;font-size:10px;font-family:var(--mono)}
+
+/* 内存映射 */
+text.map-title{fill:var(--accent2);font-size:11px;font-family:var(--mono)}
+rect.mapbar{fill:#101827;stroke:#233046}
+rect.mapseg{stroke:#233046;stroke-width:.8}
+rect.mapseg.s0,rect.mapseg.s4{fill:#151d2b}
+rect.mapseg.s1{fill:#143324}
+rect.mapseg.s2{fill:#111a28}
+rect.mapseg.s3{fill:#2a1f3d}
+text.mapseg-t{fill:#9fb0c9;font-size:11px;font-family:var(--mono)}
+text.map-end{fill:#5d6b83;font-size:9.5px;font-family:var(--mono)}
+text.mark-t{fill:var(--amber);font-size:10.5px;font-family:var(--mono)}
+polygon.mark{stroke-width:0}
+polygon.mark.pc{fill:var(--green)}
+polygon.mark.data{fill:var(--amber)}
+polygon.mark.sp{fill:var(--purple)}
+line.fnline{stroke:#3b4c6b;stroke-width:1;stroke-dasharray:2 2}
+text.fnname{fill:#5d6b83;font-size:9.5px;font-family:var(--mono)}
+
+@media (prefers-reduced-motion:reduce){
+  .bus.on{animation:none}
+  .brand .logo{animation:none}
+}
 
 /* ---------- 主体三栏 ---------- */
 #cols{display:flex;flex:1 1 auto;min-height:0;gap:1px;background:var(--line)}

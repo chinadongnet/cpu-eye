@@ -31,7 +31,7 @@
 
   var S = {
     arch: 'x86-64', progIdx: 0, prog: null, m: null,
-    running: false, timer: null, speed: 2,
+    running: false, timer: null, speed: 2, view: 'debug',
     bps: new Set(), trace: [], memTab: 'stack', dirty: true, lastEf: null
   };
 
@@ -90,8 +90,12 @@
     });
     sel.onchange = function () { loadProgram(+sel.value); };
 
-    // 数据通路
+    // 数据通路（紧凑条）与 CPU 结构示意图
     buildDatapath();
+    CE.Schematic.build($('schemWrap'));
+    document.querySelectorAll('#viewTabs button').forEach(function (b) {
+      b.onclick = function () { setView(b.dataset.view); };
+    });
 
     // 事件
     $('btnBuild').onclick = build;
@@ -143,6 +147,20 @@
     });
 
     loadProgram(0);
+  }
+
+  // 调试台 ↔ CPU 示意图
+  function setView(v) {
+    S.view = v;
+    document.querySelectorAll('#viewTabs button').forEach(function (b) {
+      b.classList.toggle('on', b.dataset.view === v);
+    });
+    var schem = v === 'schem';
+    $('paneSchem').hidden = !schem;
+    $('paneSrc').hidden = schem;
+    $('paneAsm').hidden = schem;
+    $('datapath').style.display = schem ? 'none' : '';
+    render(S.lastEf);
   }
 
   function insertAtCursor(ta, txt) {
@@ -291,7 +309,13 @@
     renderRegs(ef);
     renderFlags(ef);
     renderMem(ef);
-    renderDatapath(ef);
+    if (S.view === 'schem') {
+      CE.Schematic.update(S.m, ef, S.prog);
+      $('schemInfo').textContent = S.prog.target.title + '　已执行 ' + S.m.count + ' 条指令' +
+        (ef && ef.instr ? '　当前：' + ef.instr.text.replace(/\s+/g, ' ') : '');
+    } else {
+      renderDatapath(ef);
+    }
     renderOutput();
     renderTrace();
     updateStatus();

@@ -6,6 +6,10 @@
     <div class="brand"><span class="logo">◉</span><b>CPU-EYE</b><span class="sub">C++ → 汇编 → CPU 动态模拟</span></div>
     <div class="arch-tabs" id="archTabs"></div>
     <select id="progSel" title="选择示例程序"></select>
+    <div class="view-tabs" id="viewTabs">
+      <button data-view="debug" class="on">调试台</button>
+      <button data-view="schem">CPU 示意图</button>
+    </div>
     <div class="toolbar">
       <button id="btnBuild" class="primary" title="Ctrl+Enter">编译装载</button>
       <button id="btnStep" title="F10">单步</button>
@@ -37,6 +41,21 @@
   </section>
 
   <main id="cols">
+    <section class="pane" id="paneSchem" hidden>
+      <div class="pane-head">
+        <span>CPU 结构示意图</span>
+        <span id="schemInfo" class="muted"></span>
+      </div>
+      <div id="schemWrap" class="schem-wrap"></div>
+      <div class="schem-legend">
+        <span><i class="lg blk"></i>参与本条指令的部件</span>
+        <span><i class="lg bus"></i>正在传输的总线</span>
+        <span><i class="lg ctrl"></i>控制信号</span>
+        <span><i class="lg rd"></i>读出寄存器</span>
+        <span><i class="lg wr"></i>写入寄存器</span>
+      </div>
+    </section>
+
     <section class="pane" id="paneSrc">
       <div class="pane-head">
         <span>C++ 源码</span>
@@ -98,6 +117,15 @@
           <h3>这是什么</h3>
           <p>一个完整的教学用工具链：内置的 <b>C++ 子集编译器</b> 把源码编译成 <b>x86-32 / x86-64 / ARM32 / ARM64</b> 四种真实指令集的汇编，
              再由 <b>指令级 CPU 模拟器</b> 逐条执行，实时显示寄存器、标志位、栈内存、数据段以及数据通路各阶段的变化。</p>
+          <h3>两个视图</h3>
+          <ul>
+            <li><b>调试台</b>：源码、汇编、寄存器、栈内存三栏并排，适合逐条跟踪程序逻辑</li>
+            <li><b>CPU 示意图</b>：一张完整的处理器框图 —— PC、指令存储器、IR 指令寄存器、译码器、
+                控制单元、寄存器堆、ALU、标志寄存器、数据存储器、写回通路。每执行一条指令，
+                参与工作的部件与总线会点亮，<b>地址总线与数据总线上显示当前真实的地址和数据</b>，
+                控制信号（RegWrite / MemRead / MemWrite / Branch…）随指令类型亮灭，
+                底部的内存映射会标出 PC 位置、栈指针和本次访问的内存地址</li>
+          </ul>
           <h3>操作</h3>
           <ul>
             <li><b>编译装载</b>（Ctrl+Enter）：编译当前源码并复位 CPU</li>
@@ -135,5 +163,6 @@
 <script src="js/targets.js"></script>
 <script src="js/codegen.js"></script>
 <script src="js/machine.js"></script>
+<script src="js/schematic.js"></script>
 <script src="js/programs.js"></script>
 <script src="js/ui.js"></script>
