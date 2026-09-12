@@ -25,6 +25,16 @@
 
   function RuntimeError(msg) { var e = new Error(msg); e.isRuntime = true; return e; }
 
+  // 字符串在内存里按 UTF-8 存放，输出时解码（这样示例里可以直接打印中文）
+  function decodeUtf8(bytes) {
+    try { return new TextDecoder('utf-8').decode(new Uint8Array(bytes)); }
+    catch (e) {
+      var out = '';
+      for (var i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
+      return out;
+    }
+  }
+
   function create(prog) {
     var m = {
       prog: prog,
@@ -188,6 +198,7 @@
       case 'neg': return size === 32 ? (-sa) | 0 : -sa;
       case 'not': return size === 32 ? (~sa) | 0 : -sa - 1;
       case 'sext32': return sgn(a, 32);
+      case 'sext8': return sgn(a, 8);
     }
     throw RuntimeError('未知 ALU 操作 ' + o);
   }
@@ -221,12 +232,13 @@
     else if (name === '__print_char') s = String.fromCharCode(builtinArg(m, 0) & 0xff);
     else if (name === '__print_nl') s = '\n';
     else if (name === '__print_str') {
-      var p = builtinArgPtr(m, 0), n = 0;
+      var p = builtinArgPtr(m, 0), n = 0, bytes = [];
       while (n < 4096) {
         var c = rawRead(m, p + n, 8, false);
         if (!c) break;
-        s += String.fromCharCode(c); n++;
+        bytes.push(c); n++;
       }
+      s = decodeUtf8(bytes);
     } else throw RuntimeError('调用了未定义的函数 ' + name);
     m.output += s;
     if (m.ef) { m.ef.out = s; m.ef.builtin = name; }

@@ -10,6 +10,18 @@
   var MEM = CE.MEM;
 
   function alignTo(n, a) { return Math.floor((n + a - 1) / a) * a; }
+  function utf8Bytes(str) {
+    var out = [];
+    for (var i = 0; i < str.length; i++) {
+      var c = str.codePointAt(i);
+      if (c > 0xffff) i++;
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+      else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+      else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    }
+    return out;
+  }
   function log2(n) { return Math.round(Math.log2(n)); }
 
   var CMP_OPS = { '==': 'eq', '!=': 'ne', '<': 'lt', '<=': 'le' };
@@ -18,7 +30,7 @@
 
   function generate(ast, t) {
     var W = t.W;
-    var sizeOf = CE.sizeOf, alignOf = CE.alignOf, isPtr = CE.isPtr;
+    var sizeOf = CE.sizeOf, alignOf = CE.alignOf, isPtr = CE.isPtr, isAggregate = CE.isAggregate;
     var instrs = [];
     var symbols = {};
     var dataInit = [];
@@ -26,8 +38,10 @@
     var labelSeq = 0;
     var curFn = null, curLine = 0;
     var breakStack = [], contStack = [];
-    var funcNames = {};
-    for (var i = 0; i < ast.funcs.length; i++) funcNames[ast.funcs[i].name] = true;
+    var funcNames = {}, funcMap = {};
+    for (var i = 0; i < ast.funcs.length; i++) { funcNames[ast.funcs[i].name] = true; funcMap[ast.funcs[i].name] = ast.funcs[i]; }
+    // 先把所有类的内存布局按本架构字长算出来（指针成员在 32/64 位下大小不同）
+    (ast.structs || []).forEach(function (s) { sizeOf(s, W); });
 
     function emit(list) {
       for (var i = 0; i < list.length; i++) {
@@ -47,6 +61,25 @@
       var sz = sizeOf(gv.type, W), al = alignOf(gv.type, W);
       dp = alignTo(dp, Math.max(al, 4));
       symbols[gv.name] = dp;
+      if (gv.type.kind === 'struct') {                       // 全局对象：逐成员布局
+        var base = dp;
+        for (var b = 0; b < sz; b++) dataInit.push({ addr: base + b, size: 1, val: 0 });
+        gv.type.members.forEach(function (m, mi) {
+          var msz = sizeOf(m.type, W);
+          var isArr = m.type.kind === 'array';
+          var mElem = isArr ? sizeOf(m.type.base, W) : (m.type.kind === 'struct' ? 4 : msz);
+          if (mi < gv.init.length) {
+            if (isArr || m.type.kind === 'struct')
+              throw CE.CompileError('全局对象的初始化列表暂不支持数组或嵌套对象成员', 1);
+            dataInit.push({ addr: base + m.offset, size: msz, val: gv.init[mi] });
+          }
+          globalInfo.push({ name: gv.name + '.' + m.name, addr: base + m.offset,
+                            type: CE.typeName(m.type), elemSize: mElem,
+                            count: Math.max(1, Math.floor(msz / mElem)), total: msz });
+        });
+        dp += sz;
+        return;
+      }
       var elemT = gv.type.kind === 'array' ? gv.type.base : gv.type;
       var esz = sizeOf(elemT, W);
       var count = gv.type.kind === 'array' ? gv.type.len : 1;
@@ -58,10 +91,12 @@
     });
     ast.strings.forEach(function (s) {
       symbols[s.label] = dp;
-      for (var i = 0; i < s.text.length; i++) dataInit.push({ addr: dp + i, size: 1, val: s.text.charCodeAt(i) & 0xff });
-      dataInit.push({ addr: dp + s.text.length, size: 1, val: 0 });
-      globalInfo.push({ name: s.label, addr: dp, type: 'char[' + (s.text.length + 1) + ']', elemSize: 1, count: s.text.length + 1, total: s.text.length + 1, str: s.text });
-      dp = alignTo(dp + s.text.length + 1, 4);
+      var bytes = utf8Bytes(s.text);                       // 字符串按 UTF-8 存放
+      for (var i = 0; i < bytes.length; i++) dataInit.push({ addr: dp + i, size: 1, val: bytes[i] });
+      dataInit.push({ addr: dp + bytes.length, size: 1, val: 0 });
+      globalInfo.push({ name: s.label, addr: dp, type: 'char[' + (bytes.length + 1) + ']',
+                        elemSize: 1, count: bytes.length + 1, total: bytes.length + 1, str: s.text });
+      dp = alignTo(dp + bytes.length + 1, 4);
     });
     var dataEnd = dp;
 
@@ -71,12 +106,24 @@
       return isPtr(a) || (b && isPtr(b));
     }
 
+    function varSlot(v) {
+      if (v.isGlobal) return emit(t.addrGlobal(v.name));
+      return emit(t.addrLocal(v.offset, v.name));
+    }
     function genAddr(node) {
       curLine = node.line || curLine;
       switch (node.k) {
         case 'var':
-          if (node.v.isGlobal) return emit(t.addrGlobal(node.v.name));
-          return emit(t.addrLocal(node.v.offset, node.v.name));
+          return varSlot(node.v);
+        case 'refvar':
+          // 引用变量的槽里存的是被引用对象的地址，取出来就是左值地址
+          varSlot(node.v);
+          return emit(t.load(W));
+        case 'member':
+          sizeOf(node.cls, W);                       // 确保成员偏移已计算
+          if (node.viaPtr) genExpr(node.obj); else genAddr(node.obj);
+          if (node.m.offset) emit(t.addImm(node.m.offset, node.m.name));
+          return;
         case 'deref':
           return genExpr(node.a, true);
         case 'strlit':
@@ -84,31 +131,53 @@
       }
       throw CE.CompileError('该表达式不是左值，无法取地址', node.line);
     }
+    function genLoadIfScalar(node) {
+      if (isAggregate(node.type)) return;            // 数组和对象在表达式里就是它的地址
+      emit(t.load(sizeOf(node.type, W)));
+    }
 
     function genExpr(node, wantAddrOnly) {
       curLine = node.line || curLine;
       switch (node.k) {
         case 'num': return emit(t.imm(node.val));
         case 'sizeof': return emit(t.imm(sizeOf(node.ty, W)));
+
+        case 'cast': {
+          genExpr(node.a);
+          var toK = node.ty.kind, fromK = node.a.type ? node.a.type.kind : 'int';
+          // 只有窄化到 1 字节才需要真正产生指令，其余（指针之间、指针与整数）是纯类型层面的转换
+          if ((toK === 'char' || toK === 'bool') && fromK !== 'char' && fromK !== 'bool') emit(t.castTo8());
+          return;
+        }
         case 'strlit': return emit(t.addrGlobal(node.label));
 
-        case 'var':
+        case 'var': case 'refvar': case 'member':
           genAddr(node);
-          if (node.type.kind === 'array') return;           // 数组退化为地址
-          return emit(t.load(sizeOf(node.type, W)));
+          return genLoadIfScalar(node);
 
         case 'deref':
           genExpr(node.a);
-          if (node.type.kind === 'array') return;
-          return emit(t.load(sizeOf(node.type, W)));
+          return genLoadIfScalar(node);
 
         case 'addr': return genAddr(node.a);
+
+        case 'bindref':                                     // int& r = x;  槽里存 x 的地址
+          varSlot(node.v);
+          emit(t.pushAcc());
+          genAddr(node.a);
+          emit(t.popTmp());
+          return emit(t.store(W));
 
         case 'assign':
           genAddr(node.l);
           emit(t.pushAcc());
           genExpr(node.r);
           emit(t.popTmp());
+          if (node.l.type.kind === 'struct') {              // 对象整体赋值：逐字节拷贝
+            var csz = sizeOf(node.l.type, W);
+            if (csz > 256) throw CE.CompileError('对象超过 256 字节，暂不支持整体赋值', node.line);
+            return emit(t.copyMem(csz));
+          }
           return emit(t.store(sizeOf(node.l.type, W)));
 
         case 'neg':  genExpr(node.a); return emit(t.negAcc());
@@ -172,15 +241,25 @@
           var args = node.args, n = args.length;
           if (!funcNames[node.name] && node.name.indexOf('__print') !== 0)
             throw CE.CompileError('调用了未定义的函数 ' + node.name, node.line);
+          var callee = funcMap[node.name];
+          if (callee && callee.params.length !== n)
+            throw CE.CompileError(node.name + '() 需要 ' + (callee.params.length - (callee.isMethod ? 1 : 0)) +
+              ' 个参数，实际给了 ' + (n - (callee.isMethod ? 1 : 0)) + ' 个', node.line);
           if (t.maxRegArgs && n > t.maxRegArgs)
             throw CE.CompileError('参数个数超过 ' + t.maxRegArgs + ' 个（本模拟器限制）', node.line);
+          // 引用形参传的是地址，普通形参传的是值
+          function genArg(i) {
+            var pt = callee && callee.params[i] ? callee.params[i].type : null;
+            if (pt && pt.kind === 'ref') genAddr(args[i]);
+            else genExpr(args[i]);
+          }
           var i;
           if (t.argOrder === 'rtl') {
-            for (i = n - 1; i >= 0; i--) { genExpr(args[i]); emit(t.pushArg()); }
+            for (i = n - 1; i >= 0; i--) { genArg(i); emit(t.pushArg()); }
             emit(t.call(node.name));
             emit(t.cleanup(n));
           } else {
-            for (i = 0; i < n; i++) { genExpr(args[i]); emit(t.pushArg()); }
+            for (i = 0; i < n; i++) { genArg(i); emit(t.pushArg()); }
             for (i = n - 1; i >= 0; i--) emit(t.setArgReg(i));
             emit(t.call(node.name));
           }
@@ -279,6 +358,16 @@
                     elemSize: sizeOf(v.type.kind === 'array' ? v.type.base : v.type, W),
                     count: v.type.kind === 'array' ? v.type.len : 1,
                     isParam: fn.params.indexOf(v) >= 0 });
+        if (v.type.kind === 'struct') {                      // 对象：在栈视图里逐成员标注
+          v.type.members.forEach(function (m) {
+            var msz = sizeOf(m.type, W);
+            var isArr = m.type.kind === 'array';
+            vars.push({ name: v.name + '.' + m.name, offset: v.offset - m.offset, size: msz,
+                        type: CE.typeName(m.type),
+                        elemSize: isArr ? sizeOf(m.type.base, W) : msz,
+                        count: isArr ? m.type.len : 1, isParam: false });
+          });
+        }
       });
       var frameSize = alignTo(off, 16);
       frames[fn.name] = { frameSize: frameSize, vars: vars, entry: 0 };

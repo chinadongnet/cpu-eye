@@ -20,12 +20,13 @@ for (const p of CE.PROGRAMS) {
     }
     const m = CE.Machine.create(prog);
     CE.Machine.run(m, 3000000);
-    const ok = !m.error && m.output === p.expect;
+    const want = (p.expectByArch && p.expectByArch[arch] !== undefined) ? p.expectByArch[arch] : p.expect;
+    const ok = !m.error && m.output === want;
     if (ok) { pass++; counts.push(`${arch}:${m.count}`); }
     else {
       fail++;
       console.log(`✗ ${p.id.padEnd(7)} ${arch.padEnd(7)} err=${m.error || '-'}`);
-      console.log(`    期望: ${JSON.stringify(p.expect)}`);
+      console.log(`    期望: ${JSON.stringify(want)}`);
       console.log(`    实际: ${JSON.stringify(m.output)}`);
       if (process.env.DUMP) {
         console.log(prog.asmText.split('\n').slice(0, 200).join('\n'));

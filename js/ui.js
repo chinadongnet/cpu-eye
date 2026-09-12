@@ -199,6 +199,11 @@
     }
   }
   function isEdited() { return $('src').value !== CE.PROGRAMS[S.progIdx].code; }
+  // 有些示例（如内存布局）在不同架构下预期输出本来就不同
+  function expectFor(p, arch) {
+    if (p.expectByArch && p.expectByArch[arch] !== undefined) return p.expectByArch[arch];
+    return p.expect;
+  }
 
   /* ---------------- 源码区 ---------------- */
   function renderGutter() {
@@ -357,7 +362,8 @@
       var marks = [];
       if (a === sp) marks.push('<span class="mk">◀ ' + t.sp + '</span>');
       if (a === info.fp) marks.push('<span class="mkf">◀ ' + t.fp + '</span>');
-      if (info.map[a]) marks.push(info.map[a]);
+      // 一个字长的行里可能放着多个 4 字节变量（例如对象的两个 int 成员），都标注出来
+      for (var q = 0; q < W; q += 4) if (info.map[a + q]) marks.push(info.map[a + q]);
       if (v >= MEM.CODE_BASE && v < MEM.CODE_BASE + S.prog.instrs.length * 4) marks.push('返回地址 → #' + ((v - MEM.CODE_BASE) / 4));
       if (v === M.SENTINEL) marks.push('程序结束哨兵');
       rows.push('<div class="mrow' + (a === sp ? ' sp' : '') + (a === info.fp ? ' fp' : '') + (chg[a] ? ' chg' : '') + '">' +
@@ -496,10 +502,11 @@
     var lines = [];
     if (m.error) lines.push('<span class="bad">✘ 运行时错误：' + esc(m.error) + '</span>');
     else lines.push('<span class="ok">■ 程序正常结束</span>，main 返回值 = <b>' + m.exitCode + '</b>，共执行 <b>' + m.count + '</b> 条指令');
-    if (!isEdited() && p.expect !== undefined) {
-      lines.push(m.output === p.expect
+    var want = expectFor(p, S.arch);
+    if (!isEdited() && want !== undefined) {
+      lines.push(m.output === want
         ? '<span class="ok">✔ 输出与预期一致，本次模拟验证通过（' + esc(S.prog.target.title) + '）</span>'
-        : '<span class="bad">✘ 输出与预期不符　预期：' + esc(JSON.stringify(p.expect)) + '　实际：' + esc(JSON.stringify(m.output)) + '</span>');
+        : '<span class="bad">✘ 输出与预期不符　预期：' + esc(JSON.stringify(want)) + '　实际：' + esc(JSON.stringify(m.output)) + '</span>');
     } else if (isEdited()) {
       lines.push('<span class="wait">（源码已修改，无预期输出可比对）</span>');
     }
@@ -600,7 +607,8 @@
         return;
       }
       var real = prog.instrs.filter(function (x) { return x.kind !== 'label' && x.kind !== 'dir'; }).length;
-      var ok = !m.error && (!isEdited() && p.expect !== undefined ? m.output === p.expect : true);
+      var want = expectFor(p, id);
+      var ok = !m.error && (!isEdited() && want !== undefined ? m.output === want : true);
       rows += '<tr><td><b>' + t.title + '</b></td><td>' + t.bits + ' 位</td><td>' + esc(t.syntax.split('·').pop().trim()) + '</td>' +
         '<td>' + (t.maxRegArgs ? '前 ' + t.maxRegArgs + ' 个用寄存器' : '全部压栈') + '</td>' +
         '<td>' + real + '</td><td>' + m.count + '</td>' +

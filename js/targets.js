@@ -128,7 +128,33 @@
       },
       shlTmp: function (k) { return [mk('alu', { o: 'shl', dst: C, a: C, imm: k, size: bits }, op('shl', C + ', ' + k))]; },
       sarAcc: function (k) { return [mk('alu', { o: 'sar', dst: A, a: A, imm: k, size: bits }, op('sar', A + ', ' + k))]; },
+      // 累加器加上一个常量偏移（用于取成员地址）
+      addImm: function (n, note) {
+        return [mk('alu', { o: 'add', dst: A, a: A, imm: n, size: bits },
+          op('add', A + ', ' + n) + (note ? '        ; ->' + note : ''))];
+      },
+      // 结构体拷贝：源地址在累加器，目标地址在临时寄存器
+      copyMem: function (size) {
+        var r = [], off = 0, sc = bits === 64 ? 'edx' : 'edx';
+        while (size - off >= 4) {
+          r.push(mk('ldr', { dst: sc, base: A, disp: off, size: 32, signed: false, mode: 'off' },
+            op('mov', sc + ', ' + memref(A, off, 32))));
+          r.push(mk('str', { src: sc, base: C, disp: off, size: 32, mode: 'off' },
+            op('mov', memref(C, off, 32) + ', ' + sc)));
+          off += 4;
+        }
+        while (off < size) {
+          r.push(mk('ldr', { dst: 'dl', base: A, disp: off, size: 8, signed: false, mode: 'off' },
+            op('mov', 'dl, ' + memref(A, off, 8))));
+          r.push(mk('str', { src: 'dl', base: C, disp: off, size: 8, mode: 'off' },
+            op('mov', memref(C, off, 8) + ', dl')));
+          off += 1;
+        }
+        return r;
+      },
       negAcc: function () { return [mk('alu', { o: 'neg', dst: 'eax', a: 'eax', size: 32 }, op('neg', 'eax'))]; },
+      // 窄化类型转换：只保留低 8 位并符号扩展
+      castTo8: function () { return [mk('alu', { o: 'sext8', dst: 'eax', a: 'eax', size: 32 }, op('movsx', 'eax, al'))]; },
       notAcc: function () { return [mk('alu', { o: 'not', dst: 'eax', a: 'eax', size: 32 }, op('not', 'eax'))]; },
 
       arith: function (o, use64) {
@@ -291,7 +317,34 @@
       },
       shlTmp: function (k) { return [mk('alu', { o: 'shl', dst: B, a: B, imm: k, size: bits }, op('lsl', B + ', ' + B + ', #' + k))]; },
       sarAcc: function (k) { return [mk('alu', { o: 'sar', dst: A, a: A, imm: k, size: bits }, op('asr', A + ', ' + A + ', #' + k))]; },
+      // 累加器加上一个常量偏移（用于取成员地址）
+      addImm: function (n, note) {
+        return [mk('alu', { o: 'add', dst: A, a: A, imm: n, size: bits },
+          op('add', A + ', ' + A + ', #' + n) + (note ? '       // ->' + note : ''))];
+      },
+      // 结构体拷贝：源地址在累加器，目标地址在临时寄存器
+      copyMem: function (size) {
+        var r = [], off = 0;
+        var w32 = is64 ? 'w2' : 'r2';
+        while (size - off >= 4) {
+          r.push(mk('ldr', { dst: w32, base: A, disp: off, size: 32, signed: false, mode: 'off' },
+            op('ldr', w32 + ', [' + A + ', #' + off + ']')));
+          r.push(mk('str', { src: w32, base: B, disp: off, size: 32, mode: 'off' },
+            op('str', w32 + ', [' + B + ', #' + off + ']')));
+          off += 4;
+        }
+        while (off < size) {
+          r.push(mk('ldr', { dst: w32, base: A, disp: off, size: 8, signed: false, mode: 'off' },
+            op('ldrb', w32 + ', [' + A + ', #' + off + ']')));
+          r.push(mk('str', { src: w32, base: B, disp: off, size: 8, mode: 'off' },
+            op('strb', w32 + ', [' + B + ', #' + off + ']')));
+          off += 1;
+        }
+        return r;
+      },
       negAcc: function () { return [mk('alu', { o: 'neg', dst: A32, a: A32, size: 32 }, op('neg', A32 + ', ' + A32))]; },
+      // 窄化类型转换：只保留低 8 位并符号扩展
+      castTo8: function () { return [mk('alu', { o: 'sext8', dst: A32, a: A32, size: 32 }, op('sxtb', A32 + ', ' + A32))]; },
       notAcc: function () { return [mk('alu', { o: 'not', dst: A32, a: A32, size: 32 }, op('mvn', A32 + ', ' + A32))]; },
 
       arith: function (o, use64) {
